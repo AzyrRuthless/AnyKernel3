@@ -4,8 +4,7 @@
 ### AnyKernel setup
 # global properties
 properties() { '
-kernel.string=Kinesis Kernel by Clarencelol (Unoff)
-An unofficial revival of Clarence’s Kinesis kernel for MIUI, upstreamed with all updates from the active AOSP branch to ensure parity, stability, and modern feature support. Maintained by Audemars.
+kernel.string=Velion Kernel
 do.devicecheck=1
 do.modules=0
 do.systemless=1
