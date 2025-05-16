@@ -4,7 +4,7 @@
 ### AnyKernel setup
 # global properties
 properties() { '
-kernel.string=Velion Kernel
+kernel.string=Velion Kernel v2
 do.devicecheck=1
 do.modules=0
 do.systemless=1
@@ -15,7 +15,7 @@ device.name2=curtana
 device.name3=excalibur
 device.name4=gram
 device.name5=joyeuse
-supported.versions=
+supported.versions=14 - 15
 supported.patchlevels=
 supported.vendorpatchlevels=
 '; } # end properties
