@@ -4,7 +4,7 @@
 ### AnyKernel setup
 # global properties
 properties() { '
-kernel.string=Kinesis Kernel by Clarencelol
+kernel.string=Velion Kernel v1
 do.devicecheck=1
 do.modules=0
 do.systemless=1
@@ -15,7 +15,7 @@ device.name2=curtana
 device.name3=excalibur
 device.name4=gram
 device.name5=joyeuse
-supported.versions=
+supported.versions=11 - 14
 supported.patchlevels=
 supported.vendorpatchlevels=
 '; } # end properties
