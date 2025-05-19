@@ -4,7 +4,7 @@
 ### AnyKernel setup
 # global properties
 properties() { '
-kernel.string=Kinesis Kernel by Clarencelol
+kernel.string=Kinesis Kernel – this build includes experimental features and is provided “as is.” If you encounter issues such as performance degradation, battery drain, or memory-management problems, we recommend switching to the standard (non-experimental) Omega release instead.
 do.devicecheck=1
 do.modules=0
 do.systemless=1
