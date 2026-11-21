@@ -2,120 +2,88 @@
 ## osm0sis @ xda-developers
 
 ### AnyKernel setup
-# global properties
+# Global properties
 properties() { '
-kernel.string=ExampleKernel by osm0sis @ xda-developers
+kernel.string=Kinesis Kernel by Clarencelol
 do.devicecheck=1
 do.modules=0
 do.systemless=1
 do.cleanup=1
 do.cleanuponabort=0
-device.name1=maguro
-device.name2=toro
-device.name3=toroplus
-device.name4=tuna
-device.name5=
+device.name1=miatoll
+device.name2=curtana
+device.name3=excalibur
+device.name4=gram
+device.name5=joyeuse
 supported.versions=
 supported.patchlevels=
 supported.vendorpatchlevels=
 '; } # end properties
 
-
 ### AnyKernel install
-## boot files attributes
+# Set boot ramdisk file permissions
 boot_attributes() {
-set_perm_recursive 0 0 755 644 $RAMDISK/*;
-set_perm_recursive 0 0 750 750 $RAMDISK/init* $RAMDISK/sbin;
+  set_perm_recursive 0 0 755 644 $RAMDISK/*
+  set_perm_recursive 0 0 750 750 $RAMDISK/init* $RAMDISK/sbin
 } # end attributes
 
-# boot shell variables
-BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;
-IS_SLOT_DEVICE=0;
+# Boot shell variables
+BLOCK=/dev/block/bootdevice/by-name/boot;
+IS_SLOT_DEVICE=auto;
 RAMDISK_COMPRESSION=auto;
 PATCH_VBMETA_FLAG=auto;
 
-# import functions/variables and setup patching - see for reference (DO NOT REMOVE)
+# Import core functions and setup patching (DO NOT REMOVE)
 . tools/ak3-core.sh;
 
-# boot install
-dump_boot; # use split_boot to skip ramdisk unpack, e.g. for devices with init_boot ramdisk
+# Archive and dummy file definitions
+ARCHIVE="$AKHOME/Image.tar.gz"
+EXTRACT_DIR="$AKHOME/tmp_kernel"
+KERNEL_NONKSU="Image-nonksu"
+KERNEL_KSU="Image-ksu"
+KERNEL_SUSFS="Image-susfs"
+DUMMY_KSU="$AKHOME/ksu"
+DUMMY_SUSFS="$AKHOME/susfs"
+SELECTED_KERNEL=""
 
-# init.rc
-backup_file init.rc;
-replace_string init.rc "cpuctl cpu,timer_slack" "mount cgroup none /dev/cpuctl cpu" "mount cgroup none /dev/cpuctl cpu,timer_slack";
+# Ensure temporary directory is cleaned on exit
+cleanup() {
+  rm -rf "$EXTRACT_DIR"
+}
+trap cleanup EXIT
 
-# init.tuna.rc
-backup_file init.tuna.rc;
-insert_line init.tuna.rc "nodiratime barrier=0" after "mount_all /fstab.tuna" "\tmount ext4 /dev/block/platform/omap/omap_hsmmc.0/by-name/userdata /data remount nosuid nodev noatime nodiratime barrier=0";
-append_file init.tuna.rc "bootscript" init.tuna;
+# Step 1: Extract the archive
+if [ -f "$ARCHIVE" ]; then
+  ui_print "Extracting kernel archive..."
+  mkdir -p "$EXTRACT_DIR"
+  tar -xzf "$ARCHIVE" -C "$EXTRACT_DIR"
+  ui_print "Extraction complete."
+else
+  abort "Error: Kernel archive ($ARCHIVE) not found!"
+fi
 
-# fstab.tuna
-backup_file fstab.tuna;
-patch_fstab fstab.tuna /system ext4 options "noatime,barrier=1" "noatime,nodiratime,barrier=0";
-patch_fstab fstab.tuna /cache ext4 options "barrier=1" "barrier=0,nomblk_io_submit";
-patch_fstab fstab.tuna /data ext4 options "data=ordered" "nomblk_io_submit,data=writeback";
-append_file fstab.tuna "usbdisk" fstab;
+# Step 2: Dummy file selection logic
+if [ -f "$DUMMY_SUSFS" ]; then
+  ui_print "SUSFS dummy file found. Using: $KERNEL_SUSFS"
+  SELECTED_KERNEL="$EXTRACT_DIR/$KERNEL_SUSFS"
+elif [ -f "$DUMMY_KSU" ]; then
+  ui_print "KernelSU dummy file found. Using: $KERNEL_KSU"
+  SELECTED_KERNEL="$EXTRACT_DIR/$KERNEL_KSU"
+else
+  ui_print "No dummy file found. Defaulting to: $KERNEL_NONKSU"
+  SELECTED_KERNEL="$EXTRACT_DIR/$KERNEL_NONKSU"
+fi
 
-write_boot; # use flash_boot to skip ramdisk repack, e.g. for devices with init_boot ramdisk
+# Step 3: Validate and copy the selected kernel image
+if [ -f "$SELECTED_KERNEL" ]; then
+  cp "$SELECTED_KERNEL" "$AKHOME/Image.gz"
+  ui_print "Selected kernel image copied to Image.gz"
+else
+  abort "Error: Selected kernel image not found!"
+fi
+
+# Step 4: Patch and flash boot and dtbo
+split_boot
+flash_boot
+flash_generic dtbo
 ## end boot install
-
-
-## init_boot files attributes
-#init_boot_attributes() {
-#set_perm_recursive 0 0 755 644 $RAMDISK/*;
-#set_perm_recursive 0 0 750 750 $RAMDISK/init* $RAMDISK/sbin;
-#} # end attributes
-
-# init_boot shell variables
-#BLOCK=init_boot;
-#IS_SLOT_DEVICE=1;
-#RAMDISK_COMPRESSION=auto;
-#PATCH_VBMETA_FLAG=auto;
-
-# reset for init_boot patching
-#reset_ak;
-
-# init_boot install
-#dump_boot; # unpack ramdisk since it is the new first stage init ramdisk where overlay.d must go
-
-#write_boot;
-## end init_boot install
-
-
-## vendor_kernel_boot shell variables
-#BLOCK=vendor_kernel_boot;
-#IS_SLOT_DEVICE=1;
-#RAMDISK_COMPRESSION=auto;
-#PATCH_VBMETA_FLAG=auto;
-
-# reset for vendor_kernel_boot patching
-#reset_ak;
-
-# vendor_kernel_boot install
-#split_boot; # skip unpack/repack ramdisk, e.g. for dtb on devices with hdr v4 and vendor_kernel_boot
-
-#flash_boot;
-## end vendor_kernel_boot install
-
-
-## vendor_boot files attributes
-#vendor_boot_attributes() {
-#set_perm_recursive 0 0 755 644 $RAMDISK/*;
-#set_perm_recursive 0 0 750 750 $RAMDISK/init* $RAMDISK/sbin;
-#} # end attributes
-
-# vendor_boot shell variables
-#BLOCK=vendor_boot;
-#IS_SLOT_DEVICE=1;
-#RAMDISK_COMPRESSION=auto;
-#PATCH_VBMETA_FLAG=auto;
-
-# reset for vendor_boot patching
-#reset_ak;
-
-# vendor_boot install
-#dump_boot; # use split_boot to skip ramdisk unpack, e.g. for dtb on devices with hdr v4 but no vendor_kernel_boot
-
-#write_boot; # use flash_boot to skip ramdisk repack, e.g. for dtb on devices with hdr v4 but no vendor_kernel_boot
-## end vendor_boot install
-
