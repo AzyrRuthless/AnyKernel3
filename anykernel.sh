@@ -2,120 +2,191 @@
 ## osm0sis @ xda-developers
 
 ### AnyKernel setup
-# global properties
 properties() { '
-kernel.string=ExampleKernel by osm0sis @ xda-developers
+kernel.string=Kinesis Kernel by Clarencelol
 do.devicecheck=1
 do.modules=0
 do.systemless=1
 do.cleanup=1
 do.cleanuponabort=0
-device.name1=maguro
-device.name2=toro
-device.name3=toroplus
-device.name4=tuna
-device.name5=
+device.name1=miatoll
+device.name2=curtana
+device.name3=excalibur
+device.name4=gram
+device.name5=joyeuse
 supported.versions=
 supported.patchlevels=
 supported.vendorpatchlevels=
-'; } # end properties
-
+'; }
 
 ### AnyKernel install
-## boot files attributes
+
 boot_attributes() {
-set_perm_recursive 0 0 755 644 $RAMDISK/*;
-set_perm_recursive 0 0 750 750 $RAMDISK/init* $RAMDISK/sbin;
-} # end attributes
+  set_perm_recursive 0 0 755 644 $RAMDISK/*
+  set_perm_recursive 0 0 750 750 $RAMDISK/init* $RAMDISK/sbin
+}
 
-# boot shell variables
-BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;
-IS_SLOT_DEVICE=0;
-RAMDISK_COMPRESSION=auto;
-PATCH_VBMETA_FLAG=auto;
+BLOCK=/dev/block/bootdevice/by-name/boot
+IS_SLOT_DEVICE=auto
+RAMDISK_COMPRESSION=auto
+PATCH_VBMETA_FLAG=auto
 
-# import functions/variables and setup patching - see for reference (DO NOT REMOVE)
-. tools/ak3-core.sh;
+. tools/ak3-core.sh
 
-# boot install
-dump_boot; # use split_boot to skip ramdisk unpack, e.g. for devices with init_boot ramdisk
+ARCHIVE="$AKHOME/Image.7z"
+EXTRACT_DIR="$AKHOME/tmp_kernel"
+KERNEL_NONKSU="Image-nonksu"
+KERNEL_KSU="Image-ksu"
+KERNEL_SUSFS="Image-susfs"
 
-# init.rc
-backup_file init.rc;
-replace_string init.rc "cpuctl cpu,timer_slack" "mount cgroup none /dev/cpuctl cpu" "mount cgroup none /dev/cpuctl cpu,timer_slack";
+SELECTED_KERNEL=""
 
-# init.tuna.rc
-backup_file init.tuna.rc;
-insert_line init.tuna.rc "nodiratime barrier=0" after "mount_all /fstab.tuna" "\tmount ext4 /dev/block/platform/omap/omap_hsmmc.0/by-name/userdata /data remount nosuid nodev noatime nodiratime barrier=0";
-append_file init.tuna.rc "bootscript" init.tuna;
+cleanup() {
+  rm -rf "$EXTRACT_DIR"
+}
+trap cleanup EXIT
 
-# fstab.tuna
-backup_file fstab.tuna;
-patch_fstab fstab.tuna /system ext4 options "noatime,barrier=1" "noatime,nodiratime,barrier=0";
-patch_fstab fstab.tuna /cache ext4 options "barrier=1" "barrier=0,nomblk_io_submit";
-patch_fstab fstab.tuna /data ext4 options "data=ordered" "nomblk_io_submit,data=writeback";
-append_file fstab.tuna "usbdisk" fstab;
+# Step 1: SHA256 Verification
+ui_print "==============================================="
+ui_print "          VERIFYING KERNEL ARCHIVE"
+ui_print "==============================================="
 
-write_boot; # use flash_boot to skip ramdisk repack, e.g. for devices with init_boot ramdisk
-## end boot install
+EXPECTED_HASH="ec3e1a48a99a7b089bb1e268aec8f3ac5a800dd13f1ac93bfd71bc69e571093e"
 
+if [ ! -f "$ARCHIVE" ]; then
+  ui_print "ERROR: Kernel archive not found!"
+  exit 1
+fi
 
-## init_boot files attributes
-#init_boot_attributes() {
-#set_perm_recursive 0 0 755 644 $RAMDISK/*;
-#set_perm_recursive 0 0 750 750 $RAMDISK/init* $RAMDISK/sbin;
-#} # end attributes
+ACTUAL_HASH=$(sha256sum "$ARCHIVE" | awk '{print $1}')
+if [ "$ACTUAL_HASH" != "$EXPECTED_HASH" ]; then
+  ui_print "ERROR: SHA256 checksum mismatch!"
+  ui_print "Expected: $EXPECTED_HASH"
+  ui_print "Actual:   $ACTUAL_HASH"
+  exit 1
+fi
+ui_print "OK: SHA256 verification passed"
 
-# init_boot shell variables
-#BLOCK=init_boot;
-#IS_SLOT_DEVICE=1;
-#RAMDISK_COMPRESSION=auto;
-#PATCH_VBMETA_FLAG=auto;
+# Step 2: Extract Archive
+ui_print "==============================================="
+ui_print "            EXTRACTING KERNEL"
+ui_print "==============================================="
 
-# reset for init_boot patching
-#reset_ak;
+mkdir -p "$EXTRACT_DIR"
+chmod 755 "$AKHOME/tools/7za"
+ui_print "[==========          ] 33%..."
+"$AKHOME/tools/7za" x "$ARCHIVE" -o"$EXTRACT_DIR"
+ui_print "[==================  ] 66%..."
+sleep 0.5
+ui_print "[====================] 100%"
+ui_print "Done: extraction complete"
 
-# init_boot install
-#dump_boot; # unpack ramdisk since it is the new first stage init ramdisk where overlay.d must go
+# Step 3: ZIP Name Detection (with fallback)
+ui_print "==============================================="
+ui_print "        DETECTING KERNEL FLAVOR"
+ui_print "==============================================="
 
-#write_boot;
-## end init_boot install
+[ -z "$ZIPFILE" ] && ZIPFILE="$3"
+ZIP_BASENAME="${ZIPFILE##*/}"
 
+ui_print "Zip name: $ZIP_BASENAME"
+ui_print "Rules:"
+ui_print "- Plain name  -> NON-KSU or manual choice"
+ui_print "- RKSU-*      -> KSU"
+ui_print "- SUSFS-*     -> SUSFS"
 
-## vendor_kernel_boot shell variables
-#BLOCK=vendor_kernel_boot;
-#IS_SLOT_DEVICE=1;
-#RAMDISK_COMPRESSION=auto;
-#PATCH_VBMETA_FLAG=auto;
+case "$ZIP_BASENAME" in
+  RKSU-*)
+    ui_print "Prefix detected: RKSU -> using KSU image"
+    SELECTED_KERNEL="$EXTRACT_DIR/$KERNEL_KSU"
+    ;;
+  SUSFS-*)
+    ui_print "Prefix detected: SUSFS -> using SUSFS image"
+    SELECTED_KERNEL="$EXTRACT_DIR/$KERNEL_SUSFS"
+    ;;
+  *)
+    ui_print "No prefix detected -> switching to volume key selection"
+    selection=1
+    ui_print " "
+    ui_print "Use VOL+ to move, VOL- to select"
+    ui_print "Timeout: 10 seconds"
+    ui_print " "
+    ui_print "1. KINESIS NON-KSU (default)"
+    ui_print "2. KINESIS KSU"
+    ui_print "3. KINESIS SUSFS"
+    ui_print " "
+    ui_print "Current: NON-KSU"
 
-# reset for vendor_kernel_boot patching
-#reset_ak;
+    start_time=$(date +%s)
+    timeout=10
 
-# vendor_kernel_boot install
-#split_boot; # skip unpack/repack ramdisk, e.g. for dtb on devices with hdr v4 and vendor_kernel_boot
+    while true; do
+      now=$(date +%s)
+      elapsed=$((now - start_time))
 
-#flash_boot;
-## end vendor_kernel_boot install
+      if [ "$elapsed" -ge "$timeout" ]; then
+        ui_print "No input, sticking with NON-KSU"
+        SELECTED_KERNEL="$EXTRACT_DIR/$KERNEL_NONKSU"
+        break
+      fi
 
+      keyevent=$(timeout 1 getevent -ql 2>/dev/null | awk '/KEY_VOLUME(UP|DOWN)[[:space:]]+DOWN/ {print $3; exit}')
 
-## vendor_boot files attributes
-#vendor_boot_attributes() {
-#set_perm_recursive 0 0 755 644 $RAMDISK/*;
-#set_perm_recursive 0 0 750 750 $RAMDISK/init* $RAMDISK/sbin;
-#} # end attributes
+      case "$keyevent" in
+        KEY_VOLUMEUP)
+          selection=$(((selection % 3) + 1))
+          case $selection in
+            1) ui_print "Current: NON-KSU" ;;
+            2) ui_print "Current: KSU" ;;
+            3) ui_print "Current: SUSFS" ;;
+          esac
+          start_time=$(date +%s)
+          sleep 0.5
+          ;;
+        KEY_VOLUMEDOWN)
+          case $selection in
+            1)
+              ui_print "Selected: NON-KSU"
+              SELECTED_KERNEL="$EXTRACT_DIR/$KERNEL_NONKSU"
+              ;;
+            2)
+              ui_print "Selected: KSU"
+              SELECTED_KERNEL="$EXTRACT_DIR/$KERNEL_KSU"
+              ;;
+            3)
+              ui_print "Selected: SUSFS"
+              SELECTED_KERNEL="$EXTRACT_DIR/$KERNEL_SUSFS"
+              ;;
+          esac
+          break
+          ;;
+      esac
+    done
+    ;;
+esac
 
-# vendor_boot shell variables
-#BLOCK=vendor_boot;
-#IS_SLOT_DEVICE=1;
-#RAMDISK_COMPRESSION=auto;
-#PATCH_VBMETA_FLAG=auto;
+# Step 4: Compress Selected Kernel
+ui_print "==============================================="
+ui_print "         PACKING SELECTED KERNEL"
+ui_print "==============================================="
 
-# reset for vendor_boot patching
-#reset_ak;
+if [ -f "$SELECTED_KERNEL" ]; then
+  ui_print "Gzipping image..."
+  gzip -c "$SELECTED_KERNEL" > "$AKHOME/Image.gz"
+  ui_print "Success: Image.gz ready"
+else
+  ui_print "ERROR: Selected kernel image not found!"
+  exit 1
+fi
 
-# vendor_boot install
-#dump_boot; # use split_boot to skip ramdisk unpack, e.g. for dtb on devices with hdr v4 but no vendor_kernel_boot
+# Step 5: Clean Temporary Files
+ui_print "==============================================="
+ui_print "           CLEANING TEMPORARY FILES"
+ui_print "==============================================="
 
-#write_boot; # use flash_boot to skip ramdisk repack, e.g. for dtb on devices with hdr v4 but no vendor_kernel_boot
-## end vendor_boot install
+rm -rf "$EXTRACT_DIR"
+ui_print "Cleanup done"
 
+split_boot
+flash_boot
+flash_generic dtbo
